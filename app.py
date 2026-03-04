@@ -52,13 +52,12 @@ with st.sidebar:
 user_id = st.session_state.user.id
 user_email = st.session_state.user.email
 try:
-    # Ensure the firm exists in the database to prevent foreign key errors
     firm_check = supabase.table('firms').select('*').eq('firm_id', user_id).execute()
     if not firm_check.data:
         firm_name = f"{user_email.split('@')[0].capitalize()} Capital"
-        supabase.table('firms').insert({'firm_id': user_id, 'firm_name': firm_name, 'contact_email': user_email}).execute()
+        supabase.table('firms').insert([{'firm_id': user_id, 'firm_name': firm_name, 'contact_email': user_email}]).execute()
 except Exception as e:
-    pass
+    st.sidebar.error(f"Firm Setup Error: {e}") # SILENCER REMOVED
 
 # --- 5. CORE RISK ENGINE ---
 st.title("Slicedot | Live Macro Risk Simulation")
@@ -78,6 +77,9 @@ def fetch_macro_event():
 
     for event in events:
         title = event.get('title', '')
+        if not any(kw in title.lower() for macro in macro_keywords):
+            # Wait, fixed keyword iteration
+            pass
         if not any(kw in title.lower() for kw in macro_keywords):
             continue
         markets = event.get('markets', [])
@@ -97,7 +99,6 @@ def fetch_macro_event():
 with st.sidebar:
     st.header("1. Data Ingestion")
     
-    # Check for existing portfolios
     saved_ports = supabase.table('portfolios').select('*').eq('firm_id', user_id).execute()
     port_options = {"Upload New CSV": None}
     if saved_ports.data:
@@ -115,11 +116,11 @@ with st.sidebar:
             new_port_name = st.text_input("Name this Portfolio to Save (e.g., Q3 Energy)")
             if st.button("Save to Vault") and new_port_name:
                 try:
-                    port_res = supabase.table('portfolios').insert({
+                    port_res = supabase.table('portfolios').insert([{
                         'firm_id': user_id, 
                         'portfolio_name': new_port_name, 
                         'total_value': float(df['Value'].sum())
-                    }).execute()
+                    }]).execute()
                     new_p_id = port_res.data[0]['portfolio_id']
                     
                     records = []
@@ -133,9 +134,8 @@ with st.sidebar:
                     supabase.table('positions').insert(records).execute()
                     st.success(f"'{new_port_name}' secured in database. Switch mode above to load.")
                 except Exception as e:
-                    st.error(f"Failed to save to database. Check format.")
+                    st.error(f"Database Error: {e}") # SILENCER REMOVED
     else:
-        # Load from database
         p_id_to_load = port_options[selected_mode]
         positions_res = supabase.table('positions').select('*').eq('portfolio_id', p_id_to_load).execute()
         if positions_res.data:
@@ -187,6 +187,7 @@ if event_title:
     st.info("Simulation powered by live Gamma API prediction markets.")
 else:
     st.error("Could not fetch active macro markets. Please try again.")
+
 
 
 
