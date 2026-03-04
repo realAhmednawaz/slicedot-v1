@@ -77,9 +77,6 @@ def fetch_macro_event():
 
     for event in events:
         title = event.get('title', '')
-        if not any(kw in title.lower() for macro in macro_keywords):
-            # Wait, fixed keyword iteration
-            pass
         if not any(kw in title.lower() for kw in macro_keywords):
             continue
         markets = event.get('markets', [])
@@ -187,6 +184,7 @@ if event_title:
     st.info("Simulation powered by live Gamma API prediction markets.")
 else:
     st.error("Could not fetch active macro markets. Please try again.")
+
 
 
 
