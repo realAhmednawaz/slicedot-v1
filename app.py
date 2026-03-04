@@ -2,9 +2,53 @@ import streamlit as st
 import pandas as pd
 import requests
 import json
+from supabase import create_client, Client
 
-st.set_page_config(page_title="Slicedot V2 | Custom Portfolio", layout="wide")
+st.set_page_config(page_title="Slicedot V2 | Secure Portal", layout="wide")
 
+# --- 1. DATABASE CONNECTION ---
+@st.cache_resource
+def init_connection():
+    url = st.secrets["supabase"]["url"]
+    key = st.secrets["supabase"]["key"]
+    return create_client(url, key)
+
+try:
+    supabase: Client = init_connection()
+except Exception as e:
+    st.error("Database connection failed. Check your Streamlit secrets.")
+    st.stop()
+
+# --- 2. AUTHENTICATION STATE ---
+if 'user' not in st.session_state:
+    st.session_state.user = None
+
+# --- 3. THE LOGIN VAULT ---
+with st.sidebar:
+    st.header("Institutional Login")
+    if st.session_state.user is None:
+        login_email = st.text_input("Corporate Email")
+        login_password = st.text_input("Password", type="password")
+        if st.button("Authenticate"):
+            try:
+                response = supabase.auth.sign_in_with_password({"email": login_email, "password": login_password})
+                st.session_state.user = response.user
+                st.success("Authentication successful.")
+                st.rerun()
+            except Exception as e:
+                st.error("Invalid credentials. Access Denied.")
+        st.divider()
+        st.caption("Awaiting secure login to load risk engine.")
+        st.stop() # THIS IS THE KILL SWITCH.
+    else:
+        st.success(f"Active Session: {st.session_state.user.email}")
+        if st.button("Sign Out"):
+            supabase.auth.sign_out()
+            st.session_state.user = None
+            st.rerun()
+        st.divider()
+
+# --- 4. CORE RISK ENGINE (ONLY RUNS IF LOGGED IN) ---
 st.title("Slicedot | Live Macro Risk Simulation")
 st.markdown("Stress-testing institutional portfolios against real-time prediction market probabilities.")
 st.divider()
@@ -12,7 +56,7 @@ st.divider()
 @st.cache_data(ttl=60)
 def fetch_macro_event():
     url = "https://gamma-api.polymarket.com/events?limit=500&active=true&closed=false"
-    macro_keywords = ["israel", "iran", "middle east", "gaza", "oil", "saudi"]
+    macro_keywords = ["israel", "iran", "middle east", "gaza", "oil", "saudi", "taiwan", "china", "fed", "rate", "inflation", "gdp"]
     try:
         response = requests.get(url)
         response.raise_for_status()
@@ -89,6 +133,7 @@ if event_title:
     st.info("Simulation powered by live Gamma API prediction markets.")
 else:
     st.error("Could not fetch active macro markets. Please try again.")
+
 
 
 
