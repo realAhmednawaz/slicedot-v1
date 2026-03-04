@@ -10,8 +10,8 @@ st.markdown("Stress-testing institutional portfolios against real-time predictio
 st.divider()
 
 # Increased limit to 500 to dig past the pop-culture noise
-    url = "https://gamma-api.polymarket.com/events?limit=500&active=true&closed=false"
-    # Combined master list of all institutional geopolitical/macro risks
+url = "https://gamma-api.polymarket.com/events?limit=500&active=true&closed=false"
+# Combined master list of all institutional geopolitical/macro risks
     macro_keywords = ["israel", "iran", "middle east", "gaza", "oil", "saudi", "taiwan", "china", "fed", "rate", "inflation", "gdp"]
     try:
         response = requests.get(url)
@@ -91,5 +91,6 @@ if event_title:
     st.info("Simulation powered by live Gamma API prediction markets.")
 else:
     st.error("Could not fetch active macro markets. Please try again.")
+
 
 
