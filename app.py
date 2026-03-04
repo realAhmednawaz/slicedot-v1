@@ -4,7 +4,7 @@ import requests
 import json
 from supabase import create_client, Client
 
-st.set_page_config(page_title="Slicedot V2 | Secure Portal", layout="wide")
+st.set_page_config(page_title="Slicedot V3 | Enterprise Engine", layout="wide")
 
 # --- 1. DATABASE CONNECTION ---
 @st.cache_resource
@@ -39,7 +39,7 @@ with st.sidebar:
                 st.error("Invalid credentials. Access Denied.")
         st.divider()
         st.caption("Awaiting secure login to load risk engine.")
-        st.stop() # THIS IS THE KILL SWITCH.
+        st.stop() # THE KILL SWITCH
     else:
         st.success(f"Active Session: {st.session_state.user.email}")
         if st.button("Sign Out"):
@@ -48,7 +48,19 @@ with st.sidebar:
             st.rerun()
         st.divider()
 
-# --- 4. CORE RISK ENGINE (ONLY RUNS IF LOGGED IN) ---
+# --- 4. FIRM INITIALIZATION ---
+user_id = st.session_state.user.id
+user_email = st.session_state.user.email
+try:
+    # Ensure the firm exists in the database to prevent foreign key errors
+    firm_check = supabase.table('firms').select('*').eq('firm_id', user_id).execute()
+    if not firm_check.data:
+        firm_name = f"{user_email.split('@')[0].capitalize()} Capital"
+        supabase.table('firms').insert({'firm_id': user_id, 'firm_name': firm_name, 'contact_email': user_email}).execute()
+except Exception as e:
+    pass
+
+# --- 5. CORE RISK ENGINE ---
 st.title("Slicedot | Live Macro Risk Simulation")
 st.markdown("Stress-testing institutional portfolios against real-time prediction market probabilities.")
 st.divider()
@@ -83,9 +95,53 @@ def fetch_macro_event():
     return None, 0, 0
 
 with st.sidebar:
-    st.header("1. Portfolio Ingestion")
-    uploaded_file = st.file_uploader("Upload Portfolio CSV", type=['csv'])
-    st.caption("Required columns: Ticker, Sector, Value")
+    st.header("1. Data Ingestion")
+    
+    # Check for existing portfolios
+    saved_ports = supabase.table('portfolios').select('*').eq('firm_id', user_id).execute()
+    port_options = {"Upload New CSV": None}
+    if saved_ports.data:
+        for p in saved_ports.data:
+            port_options[p['portfolio_name']] = p['portfolio_id']
+            
+    selected_mode = st.selectbox("Select Portfolio Source", list(port_options.keys()))
+    
+    df = None
+    
+    if selected_mode == "Upload New CSV":
+        uploaded_file = st.file_uploader("Upload Portfolio CSV", type=['csv'])
+        if uploaded_file is not None:
+            df = pd.read_csv(uploaded_file)
+            new_port_name = st.text_input("Name this Portfolio to Save (e.g., Q3 Energy)")
+            if st.button("Save to Vault") and new_port_name:
+                try:
+                    port_res = supabase.table('portfolios').insert({
+                        'firm_id': user_id, 
+                        'portfolio_name': new_port_name, 
+                        'total_value': float(df['Value'].sum())
+                    }).execute()
+                    new_p_id = port_res.data[0]['portfolio_id']
+                    
+                    records = []
+                    for _, row in df.iterrows():
+                        records.append({
+                            'portfolio_id': new_p_id,
+                            'ticker': str(row['Ticker']),
+                            'sector': str(row['Sector']),
+                            'capital_allocated': float(row['Value'])
+                        })
+                    supabase.table('positions').insert(records).execute()
+                    st.success(f"'{new_port_name}' secured in database. Switch mode above to load.")
+                except Exception as e:
+                    st.error(f"Failed to save to database. Check format.")
+    else:
+        # Load from database
+        p_id_to_load = port_options[selected_mode]
+        positions_res = supabase.table('positions').select('*').eq('portfolio_id', p_id_to_load).execute()
+        if positions_res.data:
+            df = pd.DataFrame(positions_res.data)
+            df = df.rename(columns={'ticker': 'Ticker', 'sector': 'Sector', 'capital_allocated': 'Value'})
+        
     st.divider()
     
     st.header("2. Scenario Assumptions")
@@ -101,41 +157,36 @@ if event_title:
     col2.metric("Probability: NO", f"{prob_no * 100:.1f}%")
     st.divider()
 
-    if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
+    if df is not None and 'Value' in df.columns and 'Sector' in df.columns:
+        st.subheader("Parsed Portfolio Data")
+        st.dataframe(df[['Ticker', 'Sector', 'Value']], use_container_width=True)
         
-        if 'Value' in df.columns and 'Sector' in df.columns:
-            st.subheader("Parsed Portfolio Data")
-            st.dataframe(df, use_container_width=True)
-            
-            total_portfolio_value = df['Value'].sum()
-            
-            st.markdown("### Risk Calculation")
-            target_sector = st.selectbox("Select Sector Most Exposed to this Event", df['Sector'].unique())
-            exposed_value = df[df['Sector'] == target_sector]['Value'].sum()
+        total_portfolio_value = df['Value'].sum()
+        
+        st.markdown("### Risk Calculation")
+        target_sector = st.selectbox("Select Sector Most Exposed to this Event", df['Sector'].unique())
+        exposed_value = df[df['Sector'] == target_sector]['Value'].sum()
 
-            expected_value_impact = (prob_yes * impact_yes) + (prob_no * impact_no)
-            projected_exposure = exposed_value * expected_value_impact
-            
-            col3, col4, col5 = st.columns(3)
-            col3.metric("Total Book Value", f"${total_portfolio_value:,.2f}")
-            col4.metric(f"Exposed Capital ({target_sector})", f"${exposed_value:,.2f}")
-            
-            if projected_exposure < 0:
-                col5.metric("Projected Value at Risk", f"-${abs(projected_exposure):,.2f}")
-            else:
-                col5.metric("Projected Gain Exposure", f"+${projected_exposure:,.2f}")
+        expected_value_impact = (prob_yes * impact_yes) + (prob_no * impact_no)
+        projected_exposure = exposed_value * expected_value_impact
+        
+        col3, col4, col5 = st.columns(3)
+        col3.metric("Total Book Value", f"${total_portfolio_value:,.2f}")
+        col4.metric(f"Exposed Capital ({target_sector})", f"${exposed_value:,.2f}")
+        
+        if projected_exposure < 0:
+            col5.metric("Projected Value at Risk", f"-${abs(projected_exposure):,.2f}")
         else:
-            st.error("Upload Failed: The CSV must contain columns named exactly 'Ticker', 'Sector', and 'Value'.")
+            col5.metric("Projected Gain Exposure", f"+${projected_exposure:,.2f}")
     else:
-        st.warning("Awaiting Portfolio Upload. Please drag and drop a CSV file into the sidebar.")
+        if selected_mode == "Upload New CSV":
+            st.warning("Awaiting Portfolio Upload. Please drag and drop a CSV file into the sidebar.")
+        else:
+            st.warning("Portfolio is empty or failed to load.")
         
     st.info("Simulation powered by live Gamma API prediction markets.")
 else:
     st.error("Could not fetch active macro markets. Please try again.")
-
-
-
 
 
 
