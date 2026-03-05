@@ -67,7 +67,7 @@ st.divider()
 @st.cache_data(ttl=60)
 def fetch_macro_event():
     url = "https://gamma-api.polymarket.com/events?limit=500&active=true&closed=false"
-    macro_keywords = ["israel", "iran", "middle east", "gaza", "oil", "saudi", "taiwan", "china", "fed", "rate", "inflation", "gdp"]
+    macro_keywords = macro_keywords = ["israel", "iran", "middle east", "gaza"]
     try:
         response = requests.get(url)
         response.raise_for_status()
@@ -184,6 +184,7 @@ if event_title:
     st.info("Simulation powered by live Gamma API prediction markets.")
 else:
     st.error("Could not fetch active macro markets. Please try again.")
+
 
 
 
