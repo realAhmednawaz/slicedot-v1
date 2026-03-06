@@ -1,4 +1,6 @@
 streamlit
-requests
 pandas
-supabase
+requests==2.31.0
+pydantic==2.6.4
+supabase==2.4.1
+
