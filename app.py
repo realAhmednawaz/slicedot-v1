@@ -185,6 +185,79 @@ if event_title:
 else:
     st.error("Could not fetch active macro markets. Please try again.")
 
+    import os
+import streamlit as st
+import pandas as pd
+from supabase import create_client, Client
+
+# 1. THE SAFE CONNECTION
+# Unlike GitHub Actions, this runs locally or on your Streamlit deployment server.
+# Streamlit has its own secrets management (st.secrets) that you must use in production.
+@st.cache_resource
+def init_connection():
+    # Use st.secrets in production, or fallback to local .env for testing
+    url = st.secrets.get("SUPABASE_URL", os.environ.get("SUPABASE_URL"))
+    # CRITICAL: Use the ANON key here, NEVER the service_role key used in GitHub Actions.
+    key = st.secrets.get("SUPABASE_ANON_KEY", os.environ.get("SUPABASE_ANON_KEY"))
+    
+    if not url or not key:
+        st.error("FATAL: Database credentials missing.")
+        st.stop()
+        
+    return create_client(url, key)
+
+supabase = init_connection()
+
+# 2. THE SURGICAL EXTRACTION (Cached)
+# @st.cache_data prevents Streamlit from hitting your database every time a user types in a text box.
+# It holds the downloaded data in memory for exactly 1 hour (3600 seconds).
+@st.cache_data(ttl=3600)
+def fetch_market_data(symbol: str, days_back: int = 30):
+    try:
+        # We only query the exact symbol we need, ordered by time.
+        # This is why we built indexes in PostgreSQL earlier.
+        response = supabase.table("clean_market_data") \
+            .select("timestamp, price, volume") \
+            .eq("symbol", symbol.upper()) \
+            .order("timestamp", desc=True) \
+            .limit(days_back) \
+            .execute()
+            
+        data = response.data
+        if not data:
+            return pd.DataFrame() # Return empty dataframe if no data exists
+            
+        # 3. THE FINANCIAL TRANSFORMATION
+        df = pd.DataFrame(data)
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df.set_index('timestamp', inplace=True)
+        df.sort_index(ascending=True, inplace=True) # Chronological order for charting
+        
+        return df
+        
+    except Exception as e:
+        st.error(f"Database Query Failed: {e}")
+        return pd.DataFrame()
+
+# --- Execution in your Streamlit UI ---
+st.title("Slicedot Investment Simulator")
+
+# User Input
+target_symbol = st.text_input("Enter Ticker Symbol (e.g., AAPL)", value="AAPL")
+
+if target_symbol:
+    with st.spinner(f"Pulling verified data for {target_symbol}..."):
+        # This function executes instantly after the first load because of the cache.
+        market_df = fetch_market_data(target_symbol, days_back=90)
+        
+    if not market_df.empty:
+        st.success(f"Successfully loaded {len(market_df)} days of clean data.")
+        st.dataframe(market_df.tail()) # Show the last 5 days
+        # st.line_chart(market_df['price']) # Instant visualization
+    else:
+        st.warning(f"No data found for {target_symbol}. Check your ingestion engine logs.")
+
+
 
 
 
