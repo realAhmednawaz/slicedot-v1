@@ -1,261 +1,150 @@
 import streamlit as st
+import yfinance as yf
 import pandas as pd
+import plotly.graph_objects as go
+from datetime import datetime
 import requests
-import json
-from supabase import create_client, Client
+from bs4 import BeautifulSoup
+from PIL import Image
+import os
 
-st.set_page_config(page_title="Slicedot V3 | Enterprise Engine", layout="wide")
+# --- 1. GLOBAL CONFIG & THEME STATE ---
+if 'theme' not in st.session_state:
+    st.session_state.theme = 'Dark'
+if 'eye_shield' not in st.session_state:
+    st.session_state.eye_shield = False
 
-# --- 1. DATABASE CONNECTION ---
-@st.cache_resource
-def init_connection():
-    url = st.secrets["supabase"]["url"]
-    key = st.secrets["supabase"]["key"]
-    return create_client(url, key)
+st.set_page_config(layout="wide", page_title="Clovant | Institutional Terminal")
 
-try:
-    supabase: Client = init_connection()
-except Exception as e:
-    st.error("Database connection failed. Check your Streamlit secrets.")
-    st.stop()
+def toggle_theme():
+    st.session_state.theme = 'Light' if st.session_state.theme == 'Dark' else 'Dark'
 
-# --- 2. AUTHENTICATION STATE ---
-if 'user' not in st.session_state:
-    st.session_state.user = None
+# --- 2. DYNAMIC CSS (Gradients & Eye Shield) ---
+theme_css = ""
+if st.session_state.theme == 'Dark':
+    theme_css = """
+    <style>
+    .stApp { background: linear-gradient(180deg, #0e1117 0%, #051a05 100%); color: #e0e0e0; }
+    [data-testid="stSidebar"] { background-color: #0e1117; border-right: 1px solid #00ff0022; }
+    h1, h2, h3 { color: #00ff00 !important; font-family: 'Inter', sans-serif; letter-spacing: -0.5px; }
+    .stMetric { border: 1px solid #00ff0033; background: rgba(0, 255, 0, 0.05); border-radius: 4px; }
+    </style>
+    """
+else:
+    theme_css = """
+    <style>
+    .stApp { background: linear-gradient(180deg, #ffffff 0%, #f0f7ff 100%); color: #1e1e1e; }
+    [data-testid="stSidebar"] { background-color: #f8f9fa; }
+    h1, h2, h3 { color: #004080 !important; }
+    .stMetric { border: 1px solid #00408022; background: #ffffff; border-radius: 4px; }
+    </style>
+    """
 
-# --- 3. THE LOGIN VAULT ---
-with st.sidebar:
-    st.header("Institutional Login")
-    if st.session_state.user is None:
-        login_email = st.text_input("Corporate Email")
-        login_password = st.text_input("Password", type="password")
-        if st.button("Authenticate"):
-            try:
-                response = supabase.auth.sign_in_with_password({"email": login_email, "password": login_password})
-                st.session_state.user = response.user
-                st.success("Authentication successful.")
-                st.rerun()
-            except Exception as e:
-                st.error("Invalid credentials. Access Denied.")
-        st.divider()
-        st.caption("Awaiting secure login to load risk engine.")
-        st.stop() # THE KILL SWITCH
+eye_shield_css = """
+<style>
+.stApp::after { content: ""; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(255, 191, 0, 0.06); pointer-events: none; z-index: 9999; }
+</style>
+""" if st.session_state.eye_shield else ""
+
+st.markdown(theme_css + eye_shield_css, unsafe_allow_html=True)
+
+# --- 3. LOGO & HEADER SECTION ---
+# Create a header with 2 columns to push the logo to the right
+head_left, head_right = st.columns([4, 1])
+
+with head_left:
+    st.title("CLOVANT SYSTEMS")
+    st.caption("Institutional Simulation & Validation Engine | Terminal v1.0")
+
+with head_right:
+    # Look for the logo file
+    logo_path = "Clovant_Logo.jpg" # Ensure this filename matches your file
+    if os.path.exists(logo_path):
+        image = Image.open(logo_path)
+        st.image(image, use_container_width=True)
     else:
-        st.success(f"Active Session: {st.session_state.user.email}")
-        if st.button("Sign Out"):
-            supabase.auth.sign_out()
-            st.session_state.user = None
-            st.rerun()
-        st.divider()
+        st.warning("Logo file missing")
 
-# --- 4. FIRM INITIALIZATION ---
-user_id = st.session_state.user.id
-user_email = st.session_state.user.email
-try:
-    firm_check = supabase.table('firms').select('*').eq('firm_id', user_id).execute()
-    if not firm_check.data:
-        firm_name = f"{user_email.split('@')[0].capitalize()} Capital"
-        supabase.table('firms').insert([{'firm_id': user_id, 'firm_name': firm_name, 'contact_email': user_email}]).execute()
-except Exception as e:
-    st.sidebar.error(f"Firm Setup Error: {e}") # SILENCER REMOVED
-
-# --- 5. CORE RISK ENGINE ---
-st.title("Slicedot | Live Macro Risk Simulation")
-st.markdown("Stress-testing institutional portfolios against real-time prediction market probabilities.")
 st.divider()
 
-@st.cache_data(ttl=60)
-def fetch_macro_event():
-    url = "https://gamma-api.polymarket.com/events?limit=500&active=true&closed=false"
-    macro_keywords = macro_keywords = ["israel", "iran", "middle east", "gaza"]
+# --- 4. DATA ENGINES ---
+def get_risk_score(news_items):
+    score = 0
+    weights = {"war": -35, "conflict": -30, "iran": -25, "inflation": -15, "growth": 20, "rate cut": 25}
+    for item in news_items:
+        title = item['title'].lower()
+        for word, val in weights.items():
+            if word in title: score += val
+    return max(min(score, 100), -100)
+
+def scrape_news():
+    url = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC"
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        events = response.json()
-    except:
-        return None, 0, 0
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        soup = BeautifulSoup(r.content, features="xml")
+        return [{"title": i.title.text, "link": i.link.text, "date": i.pubDate.text} for i in soup.findAll('item')[:6]]
+    except: return []
 
-    for event in events:
-        title = event.get('title', '')
-        if not any(kw in title.lower() for kw in macro_keywords):
-            continue
-        markets = event.get('markets', [])
-        if not markets: continue
-        primary_market = markets[0]
-        try:
-            outcomes = json.loads(primary_market.get('outcomes', '[]'))
-            prices = json.loads(primary_market.get('outcomePrices', '[]'))
-            p1 = float(prices[0])
-            p2 = float(prices[1]) if len(prices) > 1 else 0.0
-            if 0.05 < p1 < 0.95:
-                return title, p1, p2
-        except:
-            continue
-    return None, 0, 0
-
+# --- 5. SIDEBAR CONTROLS ---
 with st.sidebar:
-    st.header("1. Data Ingestion")
+    st.header("Terminal Control")
+    st.button(f"🌓 Mode: {st.session_state.theme}", on_click=toggle_theme, use_container_width=True)
+    st.checkbox("🛡️ Eye Comfort Shield", key="eye_shield")
     
-    saved_ports = supabase.table('portfolios').select('*').eq('firm_id', user_id).execute()
-    port_options = {"Upload New CSV": None}
-    if saved_ports.data:
-        for p in saved_ports.data:
-            port_options[p['portfolio_name']] = p['portfolio_id']
-            
-    selected_mode = st.selectbox("Select Portfolio Source", list(port_options.keys()))
-    
-    df = None
-    
-    if selected_mode == "Upload New CSV":
-        uploaded_file = st.file_uploader("Upload Portfolio CSV", type=['csv'])
-        if uploaded_file is not None:
-            df = pd.read_csv(uploaded_file)
-            new_port_name = st.text_input("Name this Portfolio to Save (e.g., Q3 Energy)")
-            if st.button("Save to Vault") and new_port_name:
-                try:
-                    port_res = supabase.table('portfolios').insert([{
-                        'firm_id': user_id, 
-                        'portfolio_name': new_port_name, 
-                        'total_value': float(df['Value'].sum())
-                    }]).execute()
-                    new_p_id = port_res.data[0]['portfolio_id']
-                    
-                    records = []
-                    for _, row in df.iterrows():
-                        records.append({
-                            'portfolio_id': new_p_id,
-                            'ticker': str(row['Ticker']),
-                            'sector': str(row['Sector']),
-                            'capital_allocated': float(row['Value'])
-                        })
-                    supabase.table('positions').insert(records).execute()
-                    st.success(f"'{new_port_name}' secured in database. Switch mode above to load.")
-                except Exception as e:
-                    st.error(f"Database Error: {e}") # SILENCER REMOVED
-    else:
-        p_id_to_load = port_options[selected_mode]
-        positions_res = supabase.table('positions').select('*').eq('portfolio_id', p_id_to_load).execute()
-        if positions_res.data:
-            df = pd.DataFrame(positions_res.data)
-            df = df.rename(columns={'ticker': 'Ticker', 'sector': 'Sector', 'capital_allocated': 'Value'})
-        
     st.divider()
-    
-    st.header("2. Scenario Assumptions")
-    impact_yes = st.slider("Target Sector Impact if YES (%)", min_value=-20.0, max_value=20.0, value=-5.0, step=0.5) / 100
-    impact_no = st.slider("Target Sector Impact if NO (%)", min_value=-20.0, max_value=20.0, value=2.0, step=0.5) / 100
+    st.subheader("Asset Monitor")
+    ticker_list = st.text_input("Portfolio Tickers", "RELIANCE.NS, TCS.NS, GC=F, BTC-USD")
+    tickers = [t.strip() for t in ticker_list.split(",")]
 
-event_title, prob_yes, prob_no = fetch_macro_event()
+# --- 6. MAIN DASHBOARD ---
+news_data = scrape_news()
+risk_val = get_risk_score(news_data)
 
-if event_title:
-    st.subheader(f"Live Risk Event: {event_title}")
-    col1, col2 = st.columns(2)
-    col1.metric("Probability: YES", f"{prob_yes * 100:.1f}%")
-    col2.metric("Probability: NO", f"{prob_no * 100:.1f}%")
-    st.divider()
+# Top Metrics Row
+m1, m2, m3 = st.columns(3)
+with m1:
+    st.metric("Systemic Risk Index", f"{risk_val}%", delta="UNSTABLE" if risk_val < 0 else "STABLE")
+with m2:
+    st.metric("Active Assets", len(tickers))
+with m3:
+    st.metric("Last Sync", datetime.now().strftime("%H:%M:%S"))
 
-    if df is not None and 'Value' in df.columns and 'Sector' in df.columns:
-        st.subheader("Parsed Portfolio Data")
-        st.dataframe(df[['Ticker', 'Sector', 'Value']], use_container_width=True)
-        
-        total_portfolio_value = df['Value'].sum()
-        
-        st.markdown("### Risk Calculation")
-        target_sector = st.selectbox("Select Sector Most Exposed to this Event", df['Sector'].unique())
-        exposed_value = df[df['Sector'] == target_sector]['Value'].sum()
+st.write("---")
 
-        expected_value_impact = (prob_yes * impact_yes) + (prob_no * impact_no)
-        projected_exposure = exposed_value * expected_value_impact
-        
-        col3, col4, col5 = st.columns(3)
-        col3.metric("Total Book Value", f"${total_portfolio_value:,.2f}")
-        col4.metric(f"Exposed Capital ({target_sector})", f"${exposed_value:,.2f}")
-        
-        if projected_exposure < 0:
-            col5.metric("Projected Value at Risk", f"-${abs(projected_exposure):,.2f}")
-        else:
-            col5.metric("Projected Gain Exposure", f"+${projected_exposure:,.2f}")
-    else:
-        if selected_mode == "Upload New CSV":
-            st.warning("Awaiting Portfolio Upload. Please drag and drop a CSV file into the sidebar.")
-        else:
-            st.warning("Portfolio is empty or failed to load.")
-        
-    st.info("Simulation powered by live Gamma API prediction markets.")
-else:
-    st.error("Could not fetch active macro markets. Please try again.")
+col_left, col_right = st.columns([2, 1])
 
-    import os
-import streamlit as st
-import pandas as pd
-from supabase import create_client, Client
-
-# 1. THE SAFE CONNECTION
-# Unlike GitHub Actions, this runs locally or on your Streamlit deployment server.
-# Streamlit has its own secrets management (st.secrets) that you must use in production.
-@st.cache_resource
-def init_connection():
-    # Use st.secrets in production, or fallback to local .env for testing
-    url = st.secrets.get("SUPABASE_URL", os.environ.get("SUPABASE_URL"))
-    # CRITICAL: Use the ANON key here, NEVER the service_role key used in GitHub Actions.
-    key = st.secrets.get("SUPABASE_ANON_KEY", os.environ.get("SUPABASE_ANON_KEY"))
-    
-    if not url or not key:
-        st.error("FATAL: Database credentials missing.")
-        st.stop()
-        
-    return create_client(url, key)
-
-supabase = init_connection()
-
-# 2. THE SURGICAL EXTRACTION (Cached)
-# @st.cache_data prevents Streamlit from hitting your database every time a user types in a text box.
-# It holds the downloaded data in memory for exactly 1 hour (3600 seconds).
-@st.cache_data(ttl=3600)
-def fetch_market_data(symbol: str, days_back: int = 30):
+with col_left:
+    st.subheader("Performance Analytics")
     try:
-        # We only query the exact symbol we need, ordered by time.
-        # This is why we built indexes in PostgreSQL earlier.
-        response = supabase.table("clean_market_data") \
-            .select("timestamp, price, volume") \
-            .eq("symbol", symbol.upper()) \
-            .order("timestamp", desc=True) \
-            .limit(days_back) \
-            .execute()
-            
-        data = response.data
-        if not data:
-            return pd.DataFrame() # Return empty dataframe if no data exists
-            
-        # 3. THE FINANCIAL TRANSFORMATION
-        df = pd.DataFrame(data)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df.set_index('timestamp', inplace=True)
-        df.sort_index(ascending=True, inplace=True) # Chronological order for charting
+        df = yf.download(tickers, period="1mo", interval="1d")['Close']
+        df_norm = (df / df.iloc[0]) * 100 # Normalize to 100
         
-        return df
+        fig = go.Figure()
+        for col in df_norm.columns:
+            fig.add_trace(go.Scatter(x=df_norm.index, y=df_norm[col], name=col, line=dict(width=2)))
         
-    except Exception as e:
-        st.error(f"Database Query Failed: {e}")
-        return pd.DataFrame()
+        fig.update_layout(
+            template="plotly_dark" if st.session_state.theme == 'Dark' else "plotly_white",
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=0, r=0, t=20, b=0), height=400,
+            legend=dict(orientation="h", y=1.1)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except:
+        st.error("Market Data Feed Offline. Check Tickers.")
 
-# --- Execution in your Streamlit UI ---
-st.title("Slicedot Investment Simulator")
+with col_right:
+    st.subheader("Current Scenario")
+    for n in news_data:
+        with st.expander(n['title'][:50] + "..."):
+            st.write(n['title'])
+            st.caption(n['date'])
+            st.markdown(f"[View Impact Analysis]({n['link']})")
 
-# User Input
-target_symbol = st.text_input("Enter Ticker Symbol (e.g., AAPL)", value="AAPL")
-
-if target_symbol:
-    with st.spinner(f"Pulling verified data for {target_symbol}..."):
-        # This function executes instantly after the first load because of the cache.
-        market_df = fetch_market_data(target_symbol, days_back=90)
-        
-    if not market_df.empty:
-        st.success(f"Successfully loaded {len(market_df)} days of clean data.")
-        st.dataframe(market_df.tail()) # Show the last 5 days
-        # st.line_chart(market_df['price']) # Instant visualization
-    else:
-        st.warning(f"No data found for {target_symbol}. Check your ingestion engine logs.")
+# --- 7. FOOTER ---
+st.markdown("---")
+st.caption("Clovant Systems | Secure Node: Jamnagar-01 | Proprietary & Confidential")
 
 
 
