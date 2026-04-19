@@ -6,131 +6,123 @@ from datetime import datetime
 from PIL import Image
 import os
 
-# --- 1. SETTINGS & THEME ---
-st.set_page_config(layout="wide", page_title="AXIANT | Institutional Intelligence", page_icon="⚡")
+# --- 1. TERMINAL ARCHITECTURE ---
+st.set_page_config(layout="wide", page_title="AXIANT | Institutional Grade", page_icon="⚡")
 
-# Direct CSS Injection for a Professional Terminal Aesthetic
+# Institutional Neon-Dark CSS
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=JetBrains+Mono&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
     
-    .stApp { background-color: #050505; color: #d1d5db; font-family: 'Inter', sans-serif; }
-    [data-testid="stSidebar"] { background-color: #0a0a0a; border-right: 1px solid #1f2937; }
+    .stApp { background-color: #010101; color: #d1d5db; font-family: 'JetBrains Mono', monospace; }
+    [data-testid="stSidebar"] { background-color: #050505; border-right: 1px solid #1f2937; width: 280px !important; }
     
-    /* Terminal UI Components */
-    .market-card { background: #111827; border: 1px solid #1f2937; padding: 10px; border-radius: 4px; margin-bottom: 10px; }
-    .ticker-up { color: #10b981; font-weight: bold; }
-    .ticker-down { color: #ef4444; font-weight: bold; }
-    .axiant-header { color: #00f2ff; font-weight: 800; font-size: 1.5rem; letter-spacing: -1px; margin-bottom: 0; }
+    /* Density Overhaul */
+    .block-container { padding: 1rem 2rem !important; }
+    .terminal-row { display: flex; justify-content: space-between; border-bottom: 1px solid #1f2937; padding: 4px 0; font-size: 0.8rem; }
+    .impact-high { color: #ef4444; font-weight: bold; }
+    .impact-low { color: #10b981; font-weight: bold; }
     
-    /* Clean up Streamlit clutter */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    /* Ticker Tape Neon Pulse */
+    .tape-item { border-left: 2px solid #00f2ff; padding-left: 10px; margin-right: 20px; }
+    
+    /* Branding */
+    .brand-header { font-size: 2rem; font-weight: 900; color: #00f2ff; letter-spacing: -2px; line-height: 1; }
+    
+    /* Clutter Removal */
+    #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. DATA ENGINE ---
-def fetch_terminal_data():
-    # Proper Market Names Mapping
-    market_map = {
-        "BTC-USD": "BITCOIN / USD",
-        "ETH-USD": "ETHEREUM / USD",
-        "^DJI": "DOW JONES IND.",
-        "^IXIC": "NASDAQ COMPOSITE",
-        "RELIANCE.NS": "NSE: RELIANCE",
-        "GC=F": "COMEX GOLD"
+# --- 2. DATA ORCHESTRATION ---
+@st.cache_data(ttl=30)
+def get_institutional_data():
+    assets = {
+        "BITCOIN": "BTC-USD", "ETHEREUM": "ETH-USD",
+        "DOW 30": "^DJI", "NASDAQ 100": "^IXIC",
+        "SENSEX": "^BSESN", "NSE: RELIANCE": "RELIANCE.NS",
+        "GOLD": "GC=F", "BRENT CRUDE": "BZ=F"
     }
-    results = []
-    for ticker, name in market_map.items():
+    data = []
+    for name, ticker in assets.items():
         try:
             t = yf.Ticker(ticker).fast_info
             change = ((t['last_price'] - t['previous_close']) / t['previous_close']) * 100
-            results.append({
-                "Market": name,
-                "Price": f"{t['last_price']:,.2f}",
-                "Change": change,
-                "RawPrice": t['last_price']
-            })
+            data.append({"Name": name, "Price": t['last_price'], "Change": change})
         except: continue
-    return results
+    return data
 
-# --- 3. SIDEBAR (BRANDING & COMMANDS) ---
-with st.sidebar:
-    # 1. LOGO INTEGRATION
-    logo_path = "image_611249.png" # Path from your previous successful upload
+# --- 3. GLOBAL HEADER (LOGO & TAPE) ---
+h_col1, h_col2 = st.columns([1, 4])
+with h_col1:
+    logo_path = "image_611249.png" # Path to your logo
     if os.path.exists(logo_path):
-        st.image(Image.open(logo_path), use_container_width=True)
+        st.image(Image.open(logo_path), width=180)
     else:
-        st.markdown("<p class='axiant-header'>AXIANT</p>", unsafe_allow_html=True)
+        st.markdown("<div class='brand-header'>AXIANT</div>", unsafe_allow_html=True)
+
+with h_col2:
+    m_data = get_institutional_data()
+    tape_cols = st.columns(len(m_data))
+    for i, m in enumerate(m_data):
+        c = "#10b981" if m['Change'] > 0 else "#ef4444"
+        tape_cols[i].markdown(f"""<div class='tape-item'><small>{m['Name']}</small><br><strong style='color:{c}'>{m['Price']:,.2f}</strong></div>""", unsafe_allow_html=True)
+
+st.markdown("<hr style='margin: 0.5rem 0; border-color: #1f2937;'>", unsafe_allow_html=True)
+
+# --- 4. SIDEBAR COMMANDS ---
+with st.sidebar:
+    st.markdown("### 🖥️ TERMINAL CTRL")
+    st.caption("NODE_ID: AX-PRIME-01")
     
-    st.caption("v5.0 Stable MVP | Institutional Node")
+    with st.expander("💼 PORTFOLIO CONFIG", expanded=True):
+        p_input = st.text_area("DEPLOY TICKERS", "NVDA, TSLA, BTC-USD, AAPL, MSFT", height=100)
+        p_list = [x.strip() for x in p_input.split(",")]
+    
     st.divider()
-    
-    # 4. BRANDING & SUPPORT
-    with st.expander("🛠️ SUPPORT & SYSTEM", expanded=False):
-        st.markdown("""
-        **System Status:** 🟢 Operational
-        **Help:** support@axiant.systems
-        **Terminal ID:** AX-77-PRIME
-        """)
+    st.subheader("⚡ SIMULATION ENGINE")
+    scenario = st.select_slider("RISK LEVEL", ["MINIMAL", "ELEVATED", "BLACK SWAN", "TOTAL COLLAPSE"])
+    st.button("EXECUTE SCENARIO", use_container_width=True)
     
     st.divider()
-    st.subheader("Portfolio Control")
-    portfolio_input = st.text_area("Tickers", "NVDA, TSLA, BTC-USD", height=70)
-    user_portfolio = [x.strip() for x in portfolio_input.split(",")]
-    
-    st.divider()
-    st.subheader("Simulation Engine")
-    sim_mode = st.selectbox("Scenario", ["Baseline", "High Volatility", "Market Crash", "Bull Rally"])
-    st.button("Run Axiant Simulation", use_container_width=True)
+    st.markdown("### 🛠️ SUPPORT")
+    st.info("Direct line to Axiant Quant Desk: +1-800-AXI-DATA")
 
-# --- 4. MAIN INTERFACE ---
+# --- 5. THE WORKSPACE (TRIPLE COLUMN) ---
+c1, c2, c3 = st.columns([1, 2, 0.8])
 
-# TOP MARKET TAPE (Proper Names)
-markets = fetch_terminal_data()
-tape_cols = st.columns(len(markets))
-for i, m in enumerate(markets):
-    color_class = "ticker-up" if m['Change'] > 0 else "ticker-down"
-    tape_cols[i].markdown(f"""
-        <small>{m['Market']}</small><br>
-        <span class="{color_class}">{m['Price']}</span>
-    """, unsafe_allow_html=True)
-
-st.divider()
-
-col_wire, col_main = st.columns([1, 2], gap="large")
-
-# LEFT: THE WIRE (News/Kalshi Style)
-with col_wire:
-    st.subheader("📡 Event Wire")
-    events = [
-        ("MACRO", "Fed signals pause in rate hikes", "88%"),
-        ("NSE", "Reliance hits new 52-week high", "92%"),
-        ("CRYPTO", "BTC Institutional inflow exceeds $2B", "75%"),
-        ("TECH", "AI Hardware demand remains inelastic", "60%")
+with c1:
+    st.markdown("#### 📡 THE WIRE")
+    wire_data = [
+        ("MACRO", "Fed signals pause in rate hikes", "HIGH"),
+        ("TECH", "Nvidia Blackwell production ramped", "MED"),
+        ("CRYPTO", "SEC reviews spot ETH staking", "HIGH"),
+        ("NSE", "Reliance Retail IPO rumors", "MED"),
+        ("GEO", "Trade corridor stabilization", "LOW")
     ]
-    for tag, msg, prob in events:
+    for tag, msg, imp in wire_data:
+        color = "#ef4444" if imp == "HIGH" else "#f59e0b" if imp == "MED" else "#10b981"
         st.markdown(f"""
-            <div class="market-card">
-                <small style="color:#00f2ff; font-weight:bold;">[{tag}]</small> 
-                <span style="float:right; font-size:0.7rem;">Likelihood: {prob}</span><br>
-                <strong>{msg}</strong>
+            <div class='terminal-row'>
+                <span><span style='color:{color}'>●</span> {tag}</span>
+                <span style='color:#6b7280;'>{msg}</span>
             </div>
         """, unsafe_allow_html=True)
+    
+    st.divider()
+    st.markdown("#### 🧠 AI SUGGESTIONS")
+    st.success("HEDGE: BUY GLD (GOLD) TO OFFSET TECH")
+    st.warning("REDUCE: OVEREXPOSURE IN SEMICONDUCTORS")
 
-# RIGHT: ANALYTICS
-with col_main:
-    st.subheader("📊 Performance & Forecast")
+with c2:
+    st.markdown("#### 📊 PERFORMANCE ANALYTICS")
     try:
-        hist = yf.download(user_portfolio, period="1mo", interval="1d")['Close']
+        hist = yf.download(p_list, period="1mo")['Close']
         fig = go.Figure()
-        for ticker in user_portfolio:
-            if ticker in hist:
-                # Normalization for comparative analysis
-                y = hist[ticker].dropna()
-                y_norm = (y / y.iloc[0]) * 100
-                fig.add_trace(go.Scatter(x=y.index, y=y_norm, name=ticker))
+        for t in p_list:
+            if t in hist:
+                y_norm = (hist[t] / hist[t].dropna().iloc[0]) * 100
+                fig.add_trace(go.Scatter(x=hist.index, y=y_norm, name=t, line=dict(width=1.5)))
         
         fig.update_layout(
             template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -138,21 +130,33 @@ with col_main:
         )
         st.plotly_chart(fig, use_container_width=True)
     except:
-        st.error("Data Sync Interrupted. Check Ticker Syntax.")
+        st.error("DATA SYNC ERROR")
+    
+    st.markdown(f"#### ⚠️ RISK REPORT: {scenario}")
+    r_col1, r_col2, r_col3 = st.columns(3)
+    r_col1.metric("PORTFOLIO BETA", "1.42", "+0.05")
+    r_col2.metric("VaR (95%)", "-4.1%", "-0.2%")
+    r_col3.metric("SHARPE RATIO", "2.1", "STABLE")
 
-    # 3. NO BREAKING LINES - Static Risk Summary
-    st.markdown(f"### ⚠️ RISK ANALYSIS: {sim_mode.upper()}")
-    st.markdown("""
-    | Metric | Value | Status |
-    | :--- | :--- | :--- |
-    | **Portfolio Beta** | 1.24 | High Sensitivity |
-    | **VaR (95%)** | -3.8% | Within Limits |
-    | **Correlation** | 0.82 | High |
-    """)
+with c3:
+    st.markdown("#### 🌍 MARKET DESK")
+    for m in m_data:
+        color = "ticker-up" if m['Change'] > 0 else "ticker-down"
+        st.markdown(f"""
+            <div class='terminal-row'>
+                <span style='color:#9ca3af;'>{m['Name']}</span>
+                <span class='{color}'>{m['Price']:,.2f}</span>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.divider()
+    st.subheader("🔮 AI FORECAST")
+    st.markdown("BTC Target (7D): **$78,500**")
+    st.markdown("NVDA Target (7D): **$920.00**")
 
-# --- 5. FOOTER ---
-st.markdown("---")
-st.caption("AXIANT SYSTEMS // PROPRIETARY INFRASTRUCTURE // SECURE ACCESS ONLY")
+# --- 6. SYSTEM FOOTER ---
+st.markdown("<hr style='border-color: #1f2937;'>", unsafe_allow_html=True)
+st.caption("AXIANT v6.0 // SECURE NODE ACTIVE // PROPRIETARY INFRASTRUCTURE")
 
 
 
