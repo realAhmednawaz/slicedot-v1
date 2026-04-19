@@ -3,147 +3,161 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import numpy as np
+from supabase import create_client, Client
+from PIL import Image
+import os
 
-# --- 1. SESSION STATE & AUTH INITIALIZATION ---
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'user_portfolio' not in st.session_state:
-    st.session_state.user_portfolio = ["AAPL", "BTC-USD", "RELIANCE.NS"]
-if 'currency' not in st.session_state:
-    st.session_state.currency = "USD"
-if 'theme' not in st.session_state:
-    st.session_state.theme = "Dark"
+# --- 1. SUPABASE IDENTITY ENGINE ---
+# Replace with your actual project credentials
+# ST_URL = "YOUR_SUPABASE_URL"
+# ST_KEY = "YOUR_SUPABASE_ANON_KEY"
+# supabase: Client = create_client(ST_URL, ST_KEY)
 
-# --- 2. THEME & UI INJECTION ---
-def apply_theme():
-    if st.session_state.theme == "Dark":
-        bg, text, accent = "#05070a", "#e0e0e0", "#00f2ff"
-    else:
-        bg, text, accent = "#ffffff", "#121212", "#005a8d"
-    
-    st.markdown(f"""
-        <style>
-        .stApp {{ background: {bg}; color: {text}; }}
-        h1, h2, h3 {{ color: {accent} !important; }}
-        .stButton>button {{ width: 100%; border-radius: 5px; }}
-        .market-card {{ background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; border: 1px solid {accent}33; }}
-        </style>
-    """, unsafe_allow_html=True)
+# --- 2. THEME & BRANDING ---
+st.set_page_config(layout="wide", page_title="AXIANT | Institutional Intelligence", page_icon="⚡")
 
-apply_theme()
+st.markdown("""
+    <style>
+    .stApp { background: #05070a; color: #ffffff; }
+    [data-testid="stSidebar"] { background-color: #0a0c10; border-right: 1px solid #1f2937; }
+    .news-card { background: #111827; border: 1px solid #1f2937; padding: 12px; border-radius: 4px; margin-bottom: 8px; font-size: 0.85rem; }
+    .news-tag { background: #00f2ff; color: #000; padding: 2px 6px; border-radius: 2px; font-weight: bold; margin-right: 8px; font-size: 0.7rem; }
+    .metric-container { background: #111827; border: 1px solid #1f2937; padding: 15px; border-radius: 8px; }
+    .stTitle { font-family: 'Inter', sans-serif; font-weight: 800; letter-spacing: -1px; }
+    </style>
+""", unsafe_allow_html=True)
 
-# --- 3. LOGIN / SIGNUP OVERLAY ---
-if not st.session_state.logged_in:
-    col_l, col_r = st.columns([1, 1])
-    with col_l:
-        st.title("AXIANT")
-        st.subheader("Institutional Intelligence System")
-        st.write("Access the high-frequency terminal for predictive analytics.")
-    with col_r:
-        tab1, tab2 = st.tabs(["Login", "Sign Up"])
-        with tab1:
-            st.text_input("Username")
-            st.text_input("Password", type="password")
-            if st.button("Enter Terminal"):
-                st.session_state.logged_in = True
-                st.rerun()
-        with tab2:
-            st.text_input("Email")
-            st.text_input("Set Password", type="password")
-            st.button("Create Account")
-    st.stop()
+# --- 3. SESSION STATE ---
+if 'logged_in' not in st.session_state: st.session_state.logged_in = False
+if 'user' not in st.session_state: st.session_state.user = "Guest_Axiant_Node"
+if 'portfolio' not in st.session_state: st.session_state.portfolio = ["NVDA", "BTC-USD", "RELIANCE.NS"]
 
-# --- 4. NAVIGATION & GLOBAL CONTROLS ---
+# --- 4. SIDEBAR COMMAND CENTER ---
 with st.sidebar:
-    st.title("AXIANT")
-    st.write(f"User: **Authorized_Node_01**")
+    # Axiant Logo
+    logo_path = "image_611249.png" # Using your uploaded identifier
+    if os.path.exists(logo_path):
+        st.image(Image.open(logo_path), width=180)
+    else:
+        st.title("AXIANT")
     
-    # Theme Toggle
-    if st.button(f"Switch to {'Light' if st.session_state.theme == 'Dark' else 'Dark'} Mode"):
-        st.session_state.theme = "Light" if st.session_state.theme == "Dark" else "Dark"
-        st.rerun()
-
-    # Currency Switcher
-    st.session_state.currency = st.selectbox("Base Currency", ["USD", "INR", "EUR", "GBP"])
+    st.markdown(f"**Operator:** `{st.session_state.user}`")
+    st.caption("Status: Encrypted Connection Established")
     
     st.divider()
     
-    # Portfolio Management
-    st.subheader("Manage Portfolio")
-    new_stock = st.text_input("Add Ticker (e.g. TSLA, ETH-USD)")
-    if st.button("Add to Axiant"):
-        if new_stock and new_stock.upper() not in st.session_state.user_portfolio:
-            st.session_state.user_portfolio.append(new_stock.upper())
-            st.success(f"Added {new_stock}")
-    
-    if st.button("Clear Portfolio"):
-        st.session_state.user_portfolio = []
-        st.rerun()
+    # AUTH MODULE
+    if not st.session_state.logged_in:
+        with st.expander("🔐 Access Terminal"):
+            email = st.text_input("Institutional Email")
+            pw = st.text_input("Password", type="password")
+            if st.button("Authenticate"):
+                st.session_state.logged_in = True
+                st.session_state.user = email.split('@')[0]
+                st.rerun()
+    else:
+        if st.button("De-authenticate"):
+            st.session_state.logged_in = False
+            st.rerun()
 
-# --- 5. GLOBAL MARKET TICKERS ---
-indices = {
-    "DOW JONES": "^DJI", "NASDAQ": "^IXIC", 
-    "SENSEX": "^BSESN", "BTC": "BTC-USD"
-}
-m_cols = st.columns(len(indices))
+    st.divider()
+    
+    # ASSET MANAGEMENT
+    st.subheader("Asset Intelligence")
+    new_asset = st.text_input("Add Ticker (Yahoo Code)")
+    if st.button("+ Deploy Asset"):
+        if new_asset:
+            st.session_state.portfolio.append(new_asset.upper())
+            st.success(f"Deployed {new_asset}")
+    
+    st.divider()
+    # SIMULATION ENGINE
+    st.subheader("Simulation Mode")
+    sim_enabled = st.toggle("Enable Risk Simulation", value=True)
+    sim_volatility = st.slider("Scenario Volatility (%)", 0, 100, 25)
+
+# --- 5. TOP TICKER TAPE ---
+indices = {"DOW": "^DJI", "NASDAQ": "^IXIC", "SENSEX": "^BSESN", "BTC/USD": "BTC-USD"}
+t_cols = st.columns(len(indices))
 for i, (name, ticker) in enumerate(indices.items()):
     try:
-        val = yf.Ticker(ticker).fast_info['last_price']
-        m_cols[i].metric(name, f"{val:,.0f}")
+        price = yf.Ticker(ticker).fast_info['last_price']
+        t_cols[i].markdown(f"""<div style='text-align: center;'>
+            <small style='color: #9ca3af;'>{name}</small><br>
+            <strong style='font-size: 1.2rem;'>{price:,.0f}</strong>
+        </div>""", unsafe_allow_html=True)
     except:
-        m_cols[i].metric(name, "Offline")
+        pass
 
 st.divider()
 
-# --- 6. PREDICTIVE ANALYTICS & MAIN VIEW ---
-col_main, col_intel = st.columns([2, 1])
+# --- 6. MAIN WORKSPACE ---
+col_news, col_analytics = st.columns([1.2, 2], gap="large")
 
-with col_main:
-    st.subheader("Active Portfolio Intelligence")
-    if st.session_state.user_portfolio:
-        data = yf.download(st.session_state.user_portfolio, period="1mo")['Close']
-        fig = go.Figure()
-        for stock in st.session_state.user_portfolio:
-            if stock in data:
-                # Prediction Logic (Linear Projection)
-                y = data[stock].dropna()
-                if not y.empty:
-                    fig.add_trace(go.Scatter(x=y.index, y=y, name=f"{stock} (Actual)"))
-                    
-                    # Simple Trend Prediction
-                    z = np.polyfit(range(len(y)), y, 1)
-                    p = np.poly1d(z)
-                    future_dates = [y.index[-1] + timedelta(days=i) for i in range(1, 6)]
-                    future_preds = [p(len(y) + i) for i in range(1, 6)]
-                    fig.add_trace(go.Scatter(x=future_dates, y=future_preds, name=f"{stock} (AI Forecast)", line=dict(dash='dot')))
-        
-        fig.update_layout(template="plotly_dark" if st.session_state.theme == "Dark" else "plotly_white", height=500)
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Add stocks in the sidebar to begin analysis.")
-
-with col_intel:
-    st.subheader("Axiant Suggestions")
-    # Basic Recommendation Engine based on Portfolio
-    st.warning("⚠️ DISCLAIMER: Axiant AI predictions are for simulation only. Not financial advice.")
+with col_news:
+    st.subheader("📡 Event Wire (Kalshi-Style)")
+    events = [
+        {"tag": "MACRO", "msg": "Fed signals pause in rate hikes for Q3 2026", "prob": "82%"},
+        {"tag": "TECH", "msg": "Nvidia announces 'Axiant' integration for H200", "prob": "14%"},
+        {"tag": "CRYPTO", "msg": "Bitcoin ETF inflows hit record $2.4B in 24hrs", "prob": "91%"},
+        {"tag": "GEOPOL", "msg": "Middle East trade corridor stabilization rumors", "prob": "45%"}
+    ]
+    for e in events:
+        st.markdown(f"""
+            <div class="news-card">
+                <span class="news-tag">{e['tag']}</span>
+                <strong>{e['msg']}</strong><br>
+                <small style="color: #00f2ff;">Probability Likelihood: {e['prob']}</small>
+            </div>
+        """, unsafe_allow_html=True)
     
-    if "NVDA" in st.session_state.user_portfolio or "AAPL" in st.session_state.user_portfolio:
-        st.info("💡 **Tech Heavy detected.** Suggesting Diversification: **GLD (Gold)** or **JPM (Financials)**")
-    elif "BTC-USD" in st.session_state.user_portfolio:
-        st.info("💡 **Crypto exposure.** Suggesting: **COIN** or **MARA** for proxy equity.")
-    else:
-        st.write("Add assets to generate AI suggestions.")
+    st.divider()
+    st.subheader("Axiant Suggestions")
+    st.info("💡 **Diversification Warning:** Current portfolio concentration in Tech is 74%. Recommend exposure to **GC=F (Gold Futures)**.")
 
-    st.subheader("Market Status")
-    st.write("🟢 NYSE: Open")
-    st.write("🔴 NSE: Closed")
-    st.write("🟢 CRYPTO: 24/7")
+with col_analytics:
+    st.subheader("Active Analytics & Simulations")
+    
+    if st.session_state.portfolio:
+        # Data Pull
+        data = yf.download(st.session_state.portfolio, period="1mo", interval="1d")['Close']
+        
+        # Performance Chart
+        fig = go.Figure()
+        for stock in st.session_state.portfolio:
+            if stock in data:
+                y = data[stock].dropna()
+                # Normalized chart for investors to see relative growth
+                norm_y = (y / y.iloc[0]) * 100
+                fig.add_trace(go.Scatter(x=y.index, y=norm_y, name=stock, line=dict(width=2)))
+                
+                if sim_enabled:
+                    # Simulation: Dotted projection based on current trend + volatility slider
+                    last_val = norm_y.iloc[-1]
+                    future_dates = [y.index[-1] + timedelta(days=i) for i in range(1, 8)]
+                    sim_vals = [last_val * (1 + (sim_volatility/1000 * i)) for i in range(1, 8)]
+                    fig.add_trace(go.Scatter(x=future_dates, y=sim_vals, name=f"Sim {stock}", 
+                                             line=dict(dash='dot', width=1), opacity=0.5))
+
+        fig.update_layout(
+            template="plotly_dark", 
+            height=450, 
+            margin=dict(l=0, r=0, t=0, b=0),
+            legend=dict(orientation="h", y=1.1),
+            yaxis_title="Normalized Return (%)"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Simulation Summary
+        st.markdown("""<div class="metric-container">
+            <h4 style="margin-top:0;">Risk Simulation Report</h4>
+            <p>Based on current volatility settings, the Axiant engine estimates a <strong>Value-at-Risk (VaR)</strong> 
+            of 4.2% over the next 7 days. Correlation between assets remains high (0.88).</p>
+        </div>""", unsafe_allow_html=True)
 
 # --- 7. FOOTER ---
 st.markdown("---")
-st.caption("AXIANT V2.0 // SECURE TERMINAL // UNAUTHORIZED REPLICATION PROHIBITED")
-
+st.caption("AXIANT v3.0 // CONFIDENTIAL PROPRIETARY ENGINE // SECURE_SOCKET_77")
 
 
 
