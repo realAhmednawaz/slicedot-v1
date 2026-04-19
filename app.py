@@ -3,122 +3,146 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import requests
-from bs4 import BeautifulSoup
-from PIL import Image
-import os
+import numpy as np
 
-# --- AXIANT ENGINE CONFIG ---
-st.set_page_config(layout="wide", page_title="AXIANT | Terminal", page_icon="📈")
+# --- 1. SESSION STATE & AUTH INITIALIZATION ---
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+if 'user_portfolio' not in st.session_state:
+    st.session_state.user_portfolio = ["AAPL", "BTC-USD", "RELIANCE.NS"]
+if 'currency' not in st.session_state:
+    st.session_state.currency = "USD"
+if 'theme' not in st.session_state:
+    st.session_state.theme = "Dark"
 
-# Advanced UI Styling
-st.markdown("""
-    <style>
-    .stApp { background: #05070a; color: #e0e0e0; }
-    h1, h2, h3 { color: #00f2ff !important; font-family: 'Inter', sans-serif; font-weight: 800; }
-    
-    /* Glassmorphism News Cards */
-    .news-card {
-        background: rgba(255, 255, 255, 0.03);
-        border-left: 4px solid #00f2ff;
-        padding: 15px;
-        margin-bottom: 12px;
-        border-radius: 4px;
-        transition: 0.3s;
-    }
-    .news-card:hover { background: rgba(0, 242, 255, 0.08); }
-    
-    /* Metric Styling */
-    [data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace; font-size: 1.8rem !important; }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- HEADER ---
-col_logo, col_text = st.columns([1, 5])
-with col_logo:
-    # Set this to the exact name of your uploaded logo
-    logo_file = "image_609d48.png" 
-    if os.path.exists(logo_file):
-        st.image(Image.open(logo_file), width=100)
+# --- 2. THEME & UI INJECTION ---
+def apply_theme():
+    if st.session_state.theme == "Dark":
+        bg, text, accent = "#05070a", "#e0e0e0", "#00f2ff"
     else:
-        st.write("### AXIANT")
+        bg, text, accent = "#ffffff", "#121212", "#005a8d"
+    
+    st.markdown(f"""
+        <style>
+        .stApp {{ background: {bg}; color: {text}; }}
+        h1, h2, h3 {{ color: {accent} !important; }}
+        .stButton>button {{ width: 100%; border-radius: 5px; }}
+        .market-card {{ background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; border: 1px solid {accent}33; }}
+        </style>
+    """, unsafe_allow_html=True)
 
-with col_text:
-    st.title("AXIANT INTELLIGENCE")
-    st.caption(f"QUANTITATIVE TERMINAL // SESSION ACTIVE: {datetime.now().strftime('%H:%M:%S')} UTC")
+apply_theme()
+
+# --- 3. LOGIN / SIGNUP OVERLAY ---
+if not st.session_state.logged_in:
+    col_l, col_r = st.columns([1, 1])
+    with col_l:
+        st.title("AXIANT")
+        st.subheader("Institutional Intelligence System")
+        st.write("Access the high-frequency terminal for predictive analytics.")
+    with col_r:
+        tab1, tab2 = st.tabs(["Login", "Sign Up"])
+        with tab1:
+            st.text_input("Username")
+            st.text_input("Password", type="password")
+            if st.button("Enter Terminal"):
+                st.session_state.logged_in = True
+                st.rerun()
+        with tab2:
+            st.text_input("Email")
+            st.text_input("Set Password", type="password")
+            st.button("Create Account")
+    st.stop()
+
+# --- 4. NAVIGATION & GLOBAL CONTROLS ---
+with st.sidebar:
+    st.title("AXIANT")
+    st.write(f"User: **Authorized_Node_01**")
+    
+    # Theme Toggle
+    if st.button(f"Switch to {'Light' if st.session_state.theme == 'Dark' else 'Dark'} Mode"):
+        st.session_state.theme = "Light" if st.session_state.theme == "Dark" else "Dark"
+        st.rerun()
+
+    # Currency Switcher
+    st.session_state.currency = st.selectbox("Base Currency", ["USD", "INR", "EUR", "GBP"])
+    
+    st.divider()
+    
+    # Portfolio Management
+    st.subheader("Manage Portfolio")
+    new_stock = st.text_input("Add Ticker (e.g. TSLA, ETH-USD)")
+    if st.button("Add to Axiant"):
+        if new_stock and new_stock.upper() not in st.session_state.user_portfolio:
+            st.session_state.user_portfolio.append(new_stock.upper())
+            st.success(f"Added {new_stock}")
+    
+    if st.button("Clear Portfolio"):
+        st.session_state.user_portfolio = []
+        st.rerun()
+
+# --- 5. GLOBAL MARKET TICKERS ---
+indices = {
+    "DOW JONES": "^DJI", "NASDAQ": "^IXIC", 
+    "SENSEX": "^BSESN", "BTC": "BTC-USD"
+}
+m_cols = st.columns(len(indices))
+for i, (name, ticker) in enumerate(indices.items()):
+    try:
+        val = yf.Ticker(ticker).fast_info['last_price']
+        m_cols[i].metric(name, f"{val:,.0f}")
+    except:
+        m_cols[i].metric(name, "Offline")
 
 st.divider()
 
-# --- DATA FETCHING ---
-def get_safe_news():
-    try:
-        # Using a backup RSS feed for reliability
-        r = requests.get("https://news.google.com/rss/search?q=finance+markets", timeout=10)
-        soup = BeautifulSoup(r.content, features="xml")
-        return [{"t": i.title.text, "l": i.link.text, "d": i.pubDate.text[5:16]} for i in soup.findAll('item')[:10]]
-    except:
-        return []
+# --- 6. PREDICTIVE ANALYTICS & MAIN VIEW ---
+col_main, col_intel = st.columns([2, 1])
 
-# --- MAIN INTERFACE ---
-col_left, col_right = st.columns([1, 1.2], gap="large")
-
-with col_left:
-    st.subheader("📡 Live News Wire")
-    news = get_safe_news()
-    if news:
-        for n in news:
-            st.markdown(f"""<div class="news-card">
-                <a href="{n['l']}" style="color:white; text-decoration:none;"><strong>{n['t']}</strong></a><br>
-                <small style="color:#00f2ff;">{n['d']}</small>
-            </div>""", unsafe_allow_html=True)
-    else:
-        st.info("Re-synchronizing News Feed...")
-
-with col_right:
-    st.subheader("📊 Portfolio Analysis")
-    watch = ["BTC-USD", "NVDA", "AAPL", "RELIANCE.NS"]
-    
-    try:
-        # Use a longer period to avoid 'NaN' on weekends
-        raw_data = yf.download(watch, period="7d", interval="1h")['Close']
-        
-        # Display Metrics
-        m_cols = st.columns(len(watch))
-        for idx, ticker in enumerate(watch):
-            # Clean out NaNs for calculation
-            clean_series = raw_data[ticker].dropna()
-            if not clean_series.empty:
-                current = clean_series.iloc[-1]
-                prev = clean_series.iloc[-2]
-                change = ((current - prev) / prev) * 100
-                m_cols[idx].metric(ticker, f"${current:,.2f}", f"{change:+.2f}%")
-            else:
-                m_cols[idx].metric(ticker, "Market Closed")
-
-        # Portfolio Chart (Normalized for comparison)
+with col_main:
+    st.subheader("Active Portfolio Intelligence")
+    if st.session_state.user_portfolio:
+        data = yf.download(st.session_state.user_portfolio, period="1mo")['Close']
         fig = go.Figure()
-        for ticker in watch:
-            t_data = raw_data[ticker].dropna()
-            if not t_data.empty:
-                # Normalize data to start at 100 for better comparison
-                norm = (t_data / t_data.iloc[0]) * 100
-                fig.add_trace(go.Scatter(x=norm.index, y=norm, name=ticker, line=dict(width=2)))
+        for stock in st.session_state.user_portfolio:
+            if stock in data:
+                # Prediction Logic (Linear Projection)
+                y = data[stock].dropna()
+                if not y.empty:
+                    fig.add_trace(go.Scatter(x=y.index, y=y, name=f"{stock} (Actual)"))
+                    
+                    # Simple Trend Prediction
+                    z = np.polyfit(range(len(y)), y, 1)
+                    p = np.poly1d(z)
+                    future_dates = [y.index[-1] + timedelta(days=i) for i in range(1, 6)]
+                    future_preds = [p(len(y) + i) for i in range(1, 6)]
+                    fig.add_trace(go.Scatter(x=future_dates, y=future_preds, name=f"{stock} (AI Forecast)", line=dict(dash='dot')))
         
-        fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            height=450,
-            legend=dict(orientation="h", y=1.1),
-            yaxis_title="Relative Performance (%)"
-        )
+        fig.update_layout(template="plotly_dark" if st.session_state.theme == "Dark" else "plotly_white", height=500)
         st.plotly_chart(fig, use_container_width=True)
-        
-    except Exception as e:
-        st.error(f"Data Sync Error: {e}")
+    else:
+        st.info("Add stocks in the sidebar to begin analysis.")
 
+with col_intel:
+    st.subheader("Axiant Suggestions")
+    # Basic Recommendation Engine based on Portfolio
+    st.warning("⚠️ DISCLAIMER: Axiant AI predictions are for simulation only. Not financial advice.")
+    
+    if "NVDA" in st.session_state.user_portfolio or "AAPL" in st.session_state.user_portfolio:
+        st.info("💡 **Tech Heavy detected.** Suggesting Diversification: **GLD (Gold)** or **JPM (Financials)**")
+    elif "BTC-USD" in st.session_state.user_portfolio:
+        st.info("💡 **Crypto exposure.** Suggesting: **COIN** or **MARA** for proxy equity.")
+    else:
+        st.write("Add assets to generate AI suggestions.")
+
+    st.subheader("Market Status")
+    st.write("🟢 NYSE: Open")
+    st.write("🔴 NSE: Closed")
+    st.write("🟢 CRYPTO: 24/7")
+
+# --- 7. FOOTER ---
 st.markdown("---")
-st.caption("AXIANT SYSTEMS // NODE: GLOBAL-01 // ENCRYPTED CONNECTION")
+st.caption("AXIANT V2.0 // SECURE TERMINAL // UNAUTHORIZED REPLICATION PROHIBITED")
 
 
 
