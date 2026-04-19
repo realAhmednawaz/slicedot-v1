@@ -8,135 +8,86 @@ from bs4 import BeautifulSoup
 from PIL import Image
 import os
 
-# --- 1. SYSTEM CONFIGURATION ---
-st.set_page_config(layout="wide", page_title="AXIANT | Strategic Intelligence")
+# --- AXIANT ENGINE CONFIG ---
+st.set_page_config(layout="wide", page_title="AXIANT | Terminal")
 
-if 'theme' not in st.session_state:
-    st.session_state.theme = 'Dark'
+# Hide Streamlit's default menu for a cleaner "App" look
+st.markdown("""<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;}</style>""", unsafe_allow_html=True)
 
-def toggle_theme():
-    st.session_state.theme = 'Light' if st.session_state.theme == 'Dark' else 'Dark'
-
-# --- 2. AXIANT VISUAL IDENTITY (CSS) ---
-theme_css = ""
-if st.session_state.theme == 'Dark':
-    theme_css = """
+# Dark Theme Injection
+st.markdown("""
     <style>
-    .stApp { background: #0a0a0a; color: #ffffff; }
-    [data-testid="stSidebar"] { background-color: #111111; border-right: 1px solid #333; }
-    h1, h2, h3 { color: #00d4ff !important; font-family: 'Monaco', monospace; }
-    .stMetric { border: 1px solid #222; background: #161616; padding: 10px; border-radius: 5px; }
-    /* News Feed Styling */
-    .news-card { padding: 10px; border-bottom: 1px solid #222; margin-bottom: 5px; }
-    .news-card:hover { background: #1a1a1a; }
+    .stApp { background: #0e1117; color: #ffffff; }
+    h1, h2, h3 { color: #00f2ff !important; font-family: 'Courier New', monospace; }
+    .news-box { border-left: 3px solid #00f2ff; padding-left: 15px; margin-bottom: 20px; background: #161b22; padding: 10px; border-radius: 0 5px 5px 0; }
     </style>
-    """
-else:
-    theme_css = """
-    <style>
-    .stApp { background: #f4f7f6; color: #1e1e1e; }
-    h1, h2, h3 { color: #005a8d !important; }
-    .stMetric { border: 1px solid #ddd; background: #ffffff; padding: 10px; }
-    </style>
-    """
-st.markdown(theme_css, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# --- 3. DATA ENGINES ---
-@st.cache_data(ttl=300)
-def fetch_live_news():
-    """Scrapes financial news for the news column"""
-    url = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC"
-    try:
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
-        soup = BeautifulSoup(r.content, features="xml")
-        return [{"title": i.title.text, "link": i.link.text, "time": i.pubDate.text[17:22]} for i in soup.findAll('item')[:12]]
-    except:
-        return [{"title": "Data Feed Interrupted", "link": "#", "time": "00:00"}]
+# --- HEADER SECTION ---
+col_logo, col_text = st.columns([1, 4])
 
-def get_portfolio_data(tickers):
-    """Fetches real-time price and change %"""
-    data = []
-    for t in tickers:
-        try:
-            stock = yf.Ticker(t)
-            info = stock.fast_info
-            price = info['last_price']
-            change = ((price - info['previous_close']) / info['previous_close']) * 100
-            data.append({"Ticker": t, "Price": round(price, 2), "Change %": round(change, 2)})
-        except:
-            continue
-    return pd.DataFrame(data)
-
-# --- 4. HEADER & NAVIGATION ---
-col_h1, col_h2 = st.columns([4, 1])
-with col_h1:
-    st.title("AXIANT SYSTEMS")
-    st.caption(f"LIVE TERMINAL // SESSION: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-
-with col_h2:
-    # Look for the new Axiant Logo
-    logo_path = "Axiant_Logo.png" 
-    if os.path.exists(logo_path):
-        st.image(Image.open(logo_path), width=150)
+with col_logo:
+    # Safety Check for Logo
+    logo_file = "Axiant_Logo.png" # Make sure this matches your GitHub file exactly!
+    if os.path.exists(logo_file):
+        st.image(Image.open(logo_file), width=120)
     else:
-        st.subheader("AXIANT")
+        st.markdown("### [AXIANT]")
+
+with col_text:
+    st.title("AXIANT INTELLIGENCE")
+    st.caption(f"LIVE TERMINAL FEED | {datetime.now().strftime('%H:%M:%S')} UTC")
 
 st.divider()
 
-# --- 5. SIDEBAR CONTROLS ---
-with st.sidebar:
-    st.header("Terminal Control")
-    st.button(f"Switch to {st.session_state.theme} Mode", on_click=toggle_theme)
-    
-    st.divider()
-    st.subheader("Watchlist Configuration")
-    user_tickers = st.text_input("Enter Tickers (CSV)", "RELIANCE.NS, BTC-USD, NVDA, TSLA, GC=F")
-    ticker_list = [x.strip() for x in user_tickers.split(",")]
-    
-    st.info("System Status: Operational")
-
-# --- 6. SPLIT-SCREEN INTERFACE ---
+# --- THE SPLIT SCREEN ENGINE ---
 col_news, col_portfolio = st.columns([1, 1], gap="large")
 
-# --- LEFT SIDE: LIVE NEWS FEED ---
 with col_news:
-    st.subheader("🌐 Global Intelligence Feed")
-    news_items = fetch_live_news()
-    
-    for item in news_items:
-        st.markdown(f"""
-        <div class="news-card">
-            <small style="color: #00d4ff;">[{item['time']}]</small><br>
-            <a href="{item['link']}" style="text-decoration: none; color: inherit; font-weight: bold;">
-                {item['title']}
-            </a>
-        </div>
-        """, unsafe_allow_html=True)
+    st.subheader("📡 Live News Wire")
+    try:
+        r = requests.get("https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC", timeout=5)
+        soup = BeautifulSoup(r.content, features="xml")
+        items = soup.findAll('item')[:8]
+        for i in items:
+            with st.container():
+                st.markdown(f"""<div class="news-box">
+                    <strong>{i.title.text}</strong><br>
+                    <small>{i.pubDate.text[5:16]}</small>
+                </div>""", unsafe_allow_html=True)
+    except:
+        st.error("News Feed Offline. Attempting Reconnect...")
 
-# --- RIGHT SIDE: LIVE PORTFOLIO ---
 with col_portfolio:
-    st.subheader("📊 Live Portfolio Monitor")
+    st.subheader("📈 Active Portfolio")
+    # Default Tickers
+    watch_list = ["AAPL", "BTC-USD", "RELIANCE.NS", "NVDA"]
     
-    portfolio_df = get_portfolio_data(ticker_list)
-    
-    if not portfolio_df.empty:
-        # Display as a clean table first
-        st.table(portfolio_df)
+    try:
+        # Get data for the last 5 days
+        data = yf.download(watch_list, period="5d", interval="1h")['Close']
         
-        # Display a mini-chart for the first ticker
-        st.write(f"Chart Analysis: {ticker_list[0]}")
-        hist = yf.download(ticker_list[0], period="1d", interval="15m")
-        fig = go.Figure(data=[go.Candlestick(x=hist.index,
-                        open=hist['Open'], high=hist['High'],
-                        low=hist['Low'], close=hist['Close'])])
-        fig.update_layout(template="plotly_dark", height=300, margin=dict(l=0,r=0,b=0,t=0))
+        # Display individual metrics
+        m_cols = st.columns(len(watch_list))
+        for idx, ticker in enumerate(watch_list):
+            current_price = data[ticker].iloc[-1]
+            prev_price = data[ticker].iloc[-2]
+            delta = ((current_price - prev_price) / prev_price) * 100
+            m_cols[idx].metric(ticker, f"${current_price:.2f}", f"{delta:.2f}%")
+        
+        # Portfolio Chart
+        fig = go.Figure()
+        for ticker in watch_list:
+            fig.add_trace(go.Scatter(x=data.index, y=data[ticker], name=ticker))
+        
+        fig.update_layout(template="plotly_dark", height=400, margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("Input valid tickers in the sidebar to populate portfolio.")
+        
+    except Exception as e:
+        st.warning(f"Portfolio Feed Delayed. Waiting for Market Data.")
 
-# --- 7. FOOTER ---
 st.markdown("---")
-st.caption("AXIANT | Proprietary Intelligence Engine | encrypted_node_882")
+st.caption("AXIANT SYSTEMS // NODE: GLOBAL-01 // NO UNAUTHORIZED ACCESS")
 
 
 
