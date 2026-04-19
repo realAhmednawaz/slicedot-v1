@@ -2,7 +2,9 @@ streamlit
 yfinance
 pandas
 plotly
+supabase
+Pillow
+numpy
 requests
 beautifulsoup4
 lxml
-Pillow
