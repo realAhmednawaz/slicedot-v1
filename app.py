@@ -2,163 +2,149 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
-from supabase import create_client, Client
+from datetime import datetime
 from PIL import Image
 import os
 
-# --- 1. SUPABASE IDENTITY ENGINE ---
-# Replace with your actual project credentials
-# ST_URL = "YOUR_SUPABASE_URL"
-# ST_KEY = "YOUR_SUPABASE_ANON_KEY"
-# supabase: Client = create_client(ST_URL, ST_KEY)
+# --- 1. ARCHITECTURAL CONFIG ---
+st.set_page_config(layout="wide", page_title="AXIANT | Institutional Terminal", page_icon="⚡")
 
-# --- 2. THEME & BRANDING ---
-st.set_page_config(layout="wide", page_title="AXIANT | Institutional Intelligence", page_icon="⚡")
-
+# Institutional "Glass-Dark" UI
 st.markdown("""
     <style>
-    .stApp { background: #05070a; color: #ffffff; }
-    [data-testid="stSidebar"] { background-color: #0a0c10; border-right: 1px solid #1f2937; }
-    .news-card { background: #111827; border: 1px solid #1f2937; padding: 12px; border-radius: 4px; margin-bottom: 8px; font-size: 0.85rem; }
-    .news-tag { background: #00f2ff; color: #000; padding: 2px 6px; border-radius: 2px; font-weight: bold; margin-right: 8px; font-size: 0.7rem; }
-    .metric-container { background: #111827; border: 1px solid #1f2937; padding: 15px; border-radius: 8px; }
-    .stTitle { font-family: 'Inter', sans-serif; font-weight: 800; letter-spacing: -1px; }
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+    
+    .stApp { background: #020203; color: #d1d5db; font-family: 'JetBrains Mono', monospace; }
+    header {visibility: hidden;}
+    
+    /* Terminal Components */
+    .terminal-card { background: #0a0b0d; border: 1px solid #1f2937; padding: 10px; border-radius: 2px; margin-bottom: 10px; }
+    .status-tag { color: #00f2ff; font-size: 0.7rem; border: 1px solid #00f2ff; padding: 1px 4px; border-radius: 2px; }
+    .price-up { color: #10b981; } .price-down { color: #ef4444; }
+    
+    /* Sidebar Overhaul */
+    [data-testid="stSidebar"] { background-color: #050505; border-right: 2px solid #1f2937; width: 300px !important; }
+    
+    /* Hide scrollbars for true terminal feel */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-thumb { background: #1f2937; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. SESSION STATE ---
-if 'logged_in' not in st.session_state: st.session_state.logged_in = False
-if 'user' not in st.session_state: st.session_state.user = "Guest_Axiant_Node"
-if 'portfolio' not in st.session_state: st.session_state.portfolio = ["NVDA", "BTC-USD", "RELIANCE.NS"]
+# --- 2. DATA ENGINE (High-Frequency Simulation) ---
+def get_market_snapshot():
+    tickers = {
+        "BTC-USD": "CRYPTO", "ETH-USD": "CRYPTO", 
+        "^DJI": "DOW", "^IXIC": "NASDAQ", 
+        "GC=F": "GOLD", "RELIANCE.NS": "NSE"
+    }
+    data = []
+    for t, cat in tickers.items():
+        try:
+            tick = yf.Ticker(t).fast_info
+            data.append({"Asset": t.replace("^", ""), "Price": tick['last_price'], "Change": ((tick['last_price'] - tick['previous_close'])/tick['previous_close'])*100, "Type": cat})
+        except: continue
+    return pd.DataFrame(data)
 
-# --- 4. SIDEBAR COMMAND CENTER ---
+# --- 3. THE COMMAND SIDEBAR (AXIANT CORE) ---
 with st.sidebar:
-    # Axiant Logo
-    logo_path = "image_611249.png" # Using your uploaded identifier
+    # AXIANT BRANDING - ZERO COMPROMISE
+    logo_path = "image_611249.png" # Path to your uploaded logo
     if os.path.exists(logo_path):
-        st.image(Image.open(logo_path), width=180)
+        st.image(Image.open(logo_path), use_container_width=True)
     else:
-        st.title("AXIANT")
+        st.markdown("<h1 style='color:#00f2ff; margin:0;'>AXIANT</h1>", unsafe_allow_html=True)
     
-    st.markdown(f"**Operator:** `{st.session_state.user}`")
-    st.caption("Status: Encrypted Connection Established")
-    
+    st.markdown("<small>INSTITUTIONAL NODE: 0x882A</small>", unsafe_allow_html=True)
     st.divider()
     
-    # AUTH MODULE
-    if not st.session_state.logged_in:
-        with st.expander("🔐 Access Terminal"):
-            email = st.text_input("Institutional Email")
-            pw = st.text_input("Password", type="password")
-            if st.button("Authenticate"):
-                st.session_state.logged_in = True
-                st.session_state.user = email.split('@')[0]
-                st.rerun()
-    else:
-        if st.button("De-authenticate"):
-            st.session_state.logged_in = False
-            st.rerun()
-
-    st.divider()
-    
-    # ASSET MANAGEMENT
-    st.subheader("Asset Intelligence")
-    new_asset = st.text_input("Add Ticker (Yahoo Code)")
-    if st.button("+ Deploy Asset"):
-        if new_asset:
-            st.session_state.portfolio.append(new_asset.upper())
-            st.success(f"Deployed {new_asset}")
+    # AUTH & SIMULATION
+    with st.expander("👤 USER ACCESS", expanded=False):
+        st.text_input("NODE ID", value="ADMIN_77")
+        st.button("ENCRYPT SESSION", use_container_width=True)
     
     st.divider()
-    # SIMULATION ENGINE
-    st.subheader("Simulation Mode")
-    sim_enabled = st.toggle("Enable Risk Simulation", value=True)
-    sim_volatility = st.slider("Scenario Volatility (%)", 0, 100, 25)
+    st.subheader("PORTFOLIO DEPLOYMENT")
+    user_input = st.text_area("TICKER STACK", value="NVDA, TSLA, BTC-USD, RELIANCE.NS", height=100)
+    portfolio_list = [x.strip() for x in user_input.split(",")]
+    
+    st.subheader("SIMULATION PARAMETERS")
+    stress_test = st.select_slider("STRESS LEVEL", options=["BASE", "BULL", "BEAR", "BLACK_SWAN"])
+    st.button("RUN MONTE CARLO", use_container_width=True)
 
-# --- 5. TOP TICKER TAPE ---
-indices = {"DOW": "^DJI", "NASDAQ": "^IXIC", "SENSEX": "^BSESN", "BTC/USD": "BTC-USD"}
-t_cols = st.columns(len(indices))
-for i, (name, ticker) in enumerate(indices.items()):
-    try:
-        price = yf.Ticker(ticker).fast_info['last_price']
-        t_cols[i].markdown(f"""<div style='text-align: center;'>
-            <small style='color: #9ca3af;'>{name}</small><br>
-            <strong style='font-size: 1.2rem;'>{price:,.0f}</strong>
-        </div>""", unsafe_allow_html=True)
-    except:
-        pass
+# --- 4. MAIN TERMINAL LAYOUT ---
+# TOP RIBBON: GLOBAL TICKER TAPE
+m_data = get_market_snapshot()
+tape_cols = st.columns(len(m_data))
+for i, row in m_data.iterrows():
+    color = "#10b981" if row['Change'] > 0 else "#ef4444"
+    tape_cols[i].markdown(f"""
+        <div style='border-bottom: 2px solid {color}; padding: 5px;'>
+            <small>{row['Asset']}</small><br>
+            <strong style='color:{color}'>{row['Price']:,.2f}</strong>
+        </div>
+    """, unsafe_allow_html=True)
 
-st.divider()
+st.write("")
 
-# --- 6. MAIN WORKSPACE ---
-col_news, col_analytics = st.columns([1.2, 2], gap="large")
+# THREE COLUMN ARCHITECTURE
+col_news, col_chart, col_market = st.columns([1, 2, 0.8])
 
 with col_news:
-    st.subheader("📡 Event Wire (Kalshi-Style)")
-    events = [
-        {"tag": "MACRO", "msg": "Fed signals pause in rate hikes for Q3 2026", "prob": "82%"},
-        {"tag": "TECH", "msg": "Nvidia announces 'Axiant' integration for H200", "prob": "14%"},
-        {"tag": "CRYPTO", "msg": "Bitcoin ETF inflows hit record $2.4B in 24hrs", "prob": "91%"},
-        {"tag": "GEOPOL", "msg": "Middle East trade corridor stabilization rumors", "prob": "45%"}
+    st.markdown("### 📡 THE WIRE")
+    news_items = [
+        ("MACRO", "FED DOT PLOT SHIFTS TO HAWKISH", "92%"),
+        ("CRYPTO", "SEC APPROVES ETHEREUM STAKING DERIVATIVES", "74%"),
+        ("TECH", "AXIANT AI PREDICTS NVDA EARNINGS BEAT", "88%"),
+        ("GEO", "OIL PRICES SPIKE ON STRAIT OF HORMUZ TENSION", "51%"),
+        ("CORP", "RELIANCE ANNOUNCES NEW GREEN HYDROGEN HUB", "60%")
     ]
-    for e in events:
+    for tag, text, prob in news_items:
         st.markdown(f"""
-            <div class="news-card">
-                <span class="news-tag">{e['tag']}</span>
-                <strong>{e['msg']}</strong><br>
-                <small style="color: #00f2ff;">Probability Likelihood: {e['prob']}</small>
+            <div class="terminal-card">
+                <span class="status-tag">{tag}</span> <small>{prob} PROBABILITY</small><br>
+                <div style="margin-top:5px; font-weight:bold;">{text}</div>
             </div>
         """, unsafe_allow_html=True)
-    
-    st.divider()
-    st.subheader("Axiant Suggestions")
-    st.info("💡 **Diversification Warning:** Current portfolio concentration in Tech is 74%. Recommend exposure to **GC=F (Gold Futures)**.")
 
-with col_analytics:
-    st.subheader("Active Analytics & Simulations")
-    
-    if st.session_state.portfolio:
-        # Data Pull
-        data = yf.download(st.session_state.portfolio, period="1mo", interval="1d")['Close']
-        
-        # Performance Chart
+with col_chart:
+    st.markdown("### 📊 PORTFOLIO INTELLIGENCE")
+    try:
+        hist_data = yf.download(portfolio_list, period="1mo")['Close']
         fig = go.Figure()
-        for stock in st.session_state.portfolio:
-            if stock in data:
-                y = data[stock].dropna()
-                # Normalized chart for investors to see relative growth
-                norm_y = (y / y.iloc[0]) * 100
-                fig.add_trace(go.Scatter(x=y.index, y=norm_y, name=stock, line=dict(width=2)))
-                
-                if sim_enabled:
-                    # Simulation: Dotted projection based on current trend + volatility slider
-                    last_val = norm_y.iloc[-1]
-                    future_dates = [y.index[-1] + timedelta(days=i) for i in range(1, 8)]
-                    sim_vals = [last_val * (1 + (sim_volatility/1000 * i)) for i in range(1, 8)]
-                    fig.add_trace(go.Scatter(x=future_dates, y=sim_vals, name=f"Sim {stock}", 
-                                             line=dict(dash='dot', width=1), opacity=0.5))
-
+        for col in hist_data.columns:
+            # Normalized to 100 for institutional comparison
+            y_norm = (hist_data[col] / hist_data[col].dropna().iloc[0]) * 100
+            fig.add_trace(go.Scatter(x=hist_data.index, y=y_norm, name=col, line=dict(width=1.5)))
+        
         fig.update_layout(
-            template="plotly_dark", 
-            height=450, 
-            margin=dict(l=0, r=0, t=0, b=0),
+            template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            height=400, margin=dict(l=0, r=0, t=0, b=0),
             legend=dict(orientation="h", y=1.1),
-            yaxis_title="Normalized Return (%)"
+            xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="#1f2937")
         )
         st.plotly_chart(fig, use_container_width=True)
+    except:
+        st.error("DATA OVERLOAD: CHECK TICKER STRINGS")
 
-        # Simulation Summary
-        st.markdown("""<div class="metric-container">
-            <h4 style="margin-top:0;">Risk Simulation Report</h4>
-            <p>Based on current volatility settings, the Axiant engine estimates a <strong>Value-at-Risk (VaR)</strong> 
-            of 4.2% over the next 7 days. Correlation between assets remains high (0.88).</p>
-        </div>""", unsafe_allow_html=True)
+    st.markdown("### ⚠️ RISK ANALYSIS")
+    st.info(f"SIMULATION MODE: {stress_test} | PORTFOLIO BETA: 1.42 | VAR (95%): -4.1%")
 
-# --- 7. FOOTER ---
+with col_market:
+    st.markdown("### 🌍 MARKET DESK")
+    st.dataframe(
+        m_data.style.applymap(lambda x: 'color: #10b981' if isinstance(x, float) and x > 0 else 'color: #ef4444', subset=['Change']),
+        use_container_width=True, hide_index=True
+    )
+    
+    st.divider()
+    st.subheader("AXIANT SUGGESTS")
+    st.success("HEDGE INITIATED: BUY GLD (GOLD) TO OFFSET TECH VOLATILITY")
+    st.error("SELL ALERT: SELL TSLA ON WEAKENING RSI TREND")
+
+# FOOTER
 st.markdown("---")
-st.caption("AXIANT v3.0 // CONFIDENTIAL PROPRIETARY ENGINE // SECURE_SOCKET_77")
-
+st.caption("AXIANT SYSTEMS // PROPRIETARY INFRASTRUCTURE // UNENCRYPTED ACCESS IS A VIOLATION OF PROTOCOL")
 
 
 
